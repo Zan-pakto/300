@@ -9,36 +9,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $database = new Database();
     $conn = $database->getConnection();
     
-    $email = filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL);
-    $password = $_POST['password'];
-    $confirm_password = $_POST['confirm_password'];
-    $first_name = sanitize_input($_POST['first_name']);
-    $last_name = sanitize_input($_POST['last_name']);
+    // Get and sanitize input
+    $username = isset($_POST['username']) ? sanitize_input($_POST['username']) : '';
+    $email = isset($_POST['email']) ? filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL) : '';
+    $password = isset($_POST['password']) ? $_POST['password'] : '';
+    $confirm_password = isset($_POST['confirm_password']) ? $_POST['confirm_password'] : '';
+    $first_name = isset($_POST['first_name']) ? sanitize_input($_POST['first_name']) : '';
+    $last_name = isset($_POST['last_name']) ? sanitize_input($_POST['last_name']) : '';
     $full_name = $first_name . ' ' . $last_name;
     $role = 'volunteer';
     
-    if (empty($email) || empty($password) || empty($confirm_password) || empty($first_name) || empty($last_name)) {
+    // Validate input
+    if (empty($username) || empty($email) || empty($password) || empty($confirm_password) || empty($first_name) || empty($last_name)) {
         $error = "All fields are required";
     } elseif ($password !== $confirm_password) {
         $error = "Passwords do not match";
     } elseif (strlen($password) < 8) {
         $error = "Password must be at least 8 characters long";
+    } elseif (strlen($username) < 3) {
+        $error = "Username must be at least 3 characters long";
+    } elseif (!preg_match('/^[a-zA-Z0-9_]+$/', $username)) {
+        $error = "Username can only contain letters, numbers, and underscores";
     } else {
-        $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
-        $stmt->execute([$email]);
-        if ($stmt->fetch()) {
-            $error = "Email already registered";
-        } else {
-            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-            $stmt = $conn->prepare("INSERT INTO users (email, password, full_name, role) VALUES (?, ?, ?, ?)");
-            if ($stmt->execute([$email, $hashed_password, $full_name, $role])) {
-                $_SESSION['registration_success'] = true;
-                $_SESSION['registered_email'] = $email;
-                header('Location: login.php');
-                exit();
+        try {
+            // Check if username exists
+            $stmt = $conn->prepare("SELECT id FROM users WHERE username = ?");
+            $stmt->execute([$username]);
+            if ($stmt->fetch()) {
+                $error = "Username already taken";
             } else {
-                $error = "Registration failed. Please try again.";
+                // Check if email exists
+                $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
+                $stmt->execute([$email]);
+                if ($stmt->fetch()) {
+                    $error = "Email already registered";
+                } else {
+                    $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+                    $stmt = $conn->prepare("INSERT INTO users (username, email, password, full_name, role) VALUES (?, ?, ?, ?, ?)");
+                    if ($stmt->execute([$username, $email, $hashed_password, $full_name, $role])) {
+                        $_SESSION['registration_success'] = true;
+                        $_SESSION['registered_email'] = $email;
+                        header('Location: login.php');
+                        exit();
+                    } else {
+                        $error = "Registration failed. Please try again.";
+                    }
+                }
             }
+        } catch (PDOException $e) {
+            $error = "An error occurred. Please try again later.";
+            // Log the error for debugging
+            error_log("Registration error: " . $e->getMessage());
         }
     }
 }
@@ -100,81 +121,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label for="first_name" class="block text-sm font-medium text-gray-700 mb-1">First Name</label>
-                        <div class="relative">
-                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <i class="fas fa-user text-gray-400"></i>
-                            </div>
-                            <input id="first_name" name="first_name" type="text" required 
-                                class="pl-10 block w-full px-3 py-3 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                                placeholder="John">
-                        </div>
+                        <input type="text" id="first_name" name="first_name" required
+                            class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                            value="<?php echo isset($_POST['first_name']) ? htmlspecialchars($_POST['first_name']) : ''; ?>">
                     </div>
-
                     <div>
                         <label for="last_name" class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
-                        <div class="relative">
-                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <i class="fas fa-user text-gray-400"></i>
-                            </div>
-                            <input id="last_name" name="last_name" type="text" required 
-                                class="pl-10 block w-full px-3 py-3 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                                placeholder="Doe">
-                        </div>
+                        <input type="text" id="last_name" name="last_name" required
+                            class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                            value="<?php echo isset($_POST['last_name']) ? htmlspecialchars($_POST['last_name']) : ''; ?>">
                     </div>
                 </div>
 
                 <div>
-                    <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <i class="fas fa-envelope text-gray-400"></i>
-                        </div>
-                        <input id="email" name="email" type="email" required 
-                            class="pl-10 block w-full px-3 py-3 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                            placeholder="you@example.com">
-                    </div>
+                    <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                    <input type="text" id="username" name="username" required
+                        class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        value="<?php echo isset($_POST['username']) ? htmlspecialchars($_POST['username']) : ''; ?>"
+                        pattern="[a-zA-Z0-9_]+"
+                        title="Username can only contain letters, numbers, and underscores">
+                    <p class="mt-1 text-xs text-gray-500">Only letters, numbers, and underscores allowed</p>
+                </div>
+
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input type="email" id="email" name="email" required
+                        class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : ''; ?>">
                 </div>
 
                 <div>
                     <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <i class="fas fa-lock text-gray-400"></i>
-                        </div>
-                        <input id="password" name="password" type="password" required 
-                            class="pl-10 block w-full px-3 py-3 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                            placeholder="••••••••">
-                    </div>
+                    <input type="password" id="password" name="password" required
+                        class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent">
                     <p class="mt-1 text-xs text-gray-500">Must be at least 8 characters long</p>
                 </div>
 
                 <div>
                     <label for="confirm_password" class="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <i class="fas fa-lock text-gray-400"></i>
-                        </div>
-                        <input id="confirm_password" name="confirm_password" type="password" required 
-                            class="pl-10 block w-full px-3 py-3 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                            placeholder="••••••••">
-                    </div>
+                    <input type="password" id="confirm_password" name="confirm_password" required
+                        class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent">
                 </div>
 
-                <button type="submit" 
-                    class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-all duration-200 transform hover:scale-[1.02]">
-                    <i class="fas fa-user-plus mr-2"></i> Create Account
+                <button type="submit" class="w-full bg-teal-600 text-white py-3 px-4 rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition duration-200">
+                    Create Account
                 </button>
             </form>
         </div>
 
-        <!-- Login Link -->
-        <div class="text-center animate-fade-in">
-            <p class="text-white">
-                Already have an account? 
-                <a href="login.php" class="font-medium text-teal-200 hover:text-white transition-colors">
-                    Sign in here <i class="fas fa-arrow-right ml-1"></i>
-                </a>
-            </p>
+        <div class="text-center text-white">
+            <p>Already have an account? <a href="login.php" class="font-semibold hover:text-teal-200 transition duration-200">Sign in</a></p>
         </div>
     </div>
 </body>

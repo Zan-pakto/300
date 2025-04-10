@@ -25,8 +25,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $stmt = $conn->prepare("
-            INSERT INTO events (title, description, date_time, location, max_volunteers, status) 
-            VALUES (:title, :description, :date_time, :location, :max_volunteers, :status)
+            INSERT INTO events (title, description, date_time, location, max_volunteers, status, created_by) 
+            VALUES (:title, :description, :date_time, :location, :max_volunteers, :status, :created_by)
         ");
 
         // Combine date and time into a single datetime
@@ -38,7 +38,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':date_time' => $date_time,
             ':location' => $_POST['location'],
             ':max_volunteers' => (int)$_POST['max_volunteers'],
-            ':status' => 'Open'
+            ':status' => 'Open',
+            ':created_by' => $_SESSION['user_id']
         ]);
 
         $success_message = 'Event added successfully!';

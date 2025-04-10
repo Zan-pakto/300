@@ -9,20 +9,72 @@ $conn = $database->getConnection();
 // Handle event deletion
 if (isset($_POST['delete_event']) && isset($_POST['event_id'])) {
     try {
-        $stmt = $conn->prepare("DELETE FROM events WHERE id = :id");
+        // First check if the current user is the creator of the event
+        $stmt = $conn->prepare("SELECT created_by FROM events WHERE id = :id");
         $stmt->execute([':id' => $_POST['event_id']]);
-        $success_message = 'Event deleted successfully!';
+        $event = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($event && $event['created_by'] == $_SESSION['user_id']) {
+            $stmt = $conn->prepare("DELETE FROM events WHERE id = :id");
+            $stmt->execute([':id' => $_POST['event_id']]);
+            $success_message = 'Event deleted successfully!';
+        } else {
+            $error_message = 'You do not have permission to delete this event.';
+        }
     } catch (PDOException $e) {
         $error_message = 'Error deleting event: ' . $e->getMessage();
     }
 }
 
-// Get all events
+// Handle event registration
+if (isset($_POST['register_event']) && isset($_POST['event_id'])) {
+    try {
+        // Check if already registered
+        $stmt = $conn->prepare("SELECT id FROM event_registrations WHERE event_id = ? AND user_id = ?");
+        $stmt->execute([$_POST['event_id'], $_SESSION['user_id']]);
+        if ($stmt->fetch()) {
+            $error_message = 'You are already registered for this event.';
+        } else {
+            // Check if event is open and has available slots
+            $stmt = $conn->prepare("
+                SELECT e.max_volunteers, COUNT(er.id) as current_registrations 
+                FROM events e 
+                LEFT JOIN event_registrations er ON e.id = er.event_id 
+                WHERE e.id = ? AND e.status = 'Open'
+                GROUP BY e.id
+            ");
+            $stmt->execute([$_POST['event_id']]);
+            $event = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$event) {
+                $error_message = 'Event is not available for registration.';
+            } elseif ($event['current_registrations'] >= $event['max_volunteers']) {
+                $error_message = 'Event is full. No more volunteers can be registered.';
+            } else {
+                // Register for event
+                $stmt = $conn->prepare("INSERT INTO event_registrations (event_id, user_id, status) VALUES (?, ?, 'Registered')");
+                if ($stmt->execute([$_POST['event_id'], $_SESSION['user_id']])) {
+                    $success_message = 'Successfully registered for the event!';
+                } else {
+                    $error_message = 'Failed to register for the event. Please try again.';
+                }
+            }
+        }
+    } catch (PDOException $e) {
+        $error_message = 'Error registering for event: ' . $e->getMessage();
+    }
+}
+
+// Get all events with creator information and registration status
 $stmt = $conn->prepare("
-    SELECT * FROM events 
-    ORDER BY date_time ASC
+    SELECT e.*, u.full_name as creator_name,
+           (SELECT COUNT(*) FROM event_registrations er WHERE er.event_id = e.id) as registered_count,
+           (SELECT COUNT(*) FROM event_registrations er WHERE er.event_id = e.id AND er.user_id = ?) as is_registered
+    FROM events e
+    JOIN users u ON e.created_by = u.id
+    ORDER BY e.date_time ASC
 ");
-$stmt->execute();
+$stmt->execute([$_SESSION['user_id']]);
 $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
@@ -33,6 +85,35 @@ $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <title>Events - VolunteerHub</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+        .modal-content {
+            position: relative;
+            background-color: white;
+            margin: 10% auto;
+            padding: 20px;
+            width: 80%;
+            max-width: 600px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .close {
+            position: absolute;
+            right: 20px;
+            top: 10px;
+            font-size: 24px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body class="bg-gray-50">
     <div class="min-h-screen">
@@ -159,20 +240,21 @@ $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             </div>
                             <div class="flex items-center text-sm text-gray-500">
                                 <i class="fas fa-users mr-2 text-emerald-500"></i>
-                                Max Volunteers: <?php echo htmlspecialchars($event['max_volunteers']); ?>
+                                <?php echo $event['registered_count']; ?>/<?php echo htmlspecialchars($event['max_volunteers']); ?> Volunteers
                             </div>
-                            <?php if (!empty($event['description'])): ?>
-                            <div class="mt-2 text-sm text-gray-600 line-clamp-2">
-                                <?php echo htmlspecialchars($event['description']); ?>
+                            <div class="flex items-center text-sm text-gray-500">
+                                <i class="fas fa-user mr-2 text-emerald-500"></i>
+                                Created by: <?php echo htmlspecialchars($event['creator_name']); ?>
                             </div>
-                            <?php endif; ?>
                         </div>
 
                         <div class="mt-6 flex justify-between items-center">
-                            <a href="#" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-gradient-to-r from-green-700 via-emerald-700 to-teal-700 hover:from-green-800 hover:via-emerald-800 hover:to-teal-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
+                            <button onclick="showEventDetails(<?php echo htmlspecialchars(json_encode($event)); ?>)" 
+                                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-gradient-to-r from-green-700 via-emerald-700 to-teal-700 hover:from-green-800 hover:via-emerald-800 hover:to-teal-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
                                 View Details
                                 <i class="fas fa-arrow-right ml-2"></i>
-                            </a>
+                            </button>
+                            <?php if ($event['created_by'] == $_SESSION['user_id']): ?>
                             <form method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this event?');">
                                 <input type="hidden" name="event_id" value="<?php echo $event['id']; ?>">
                                 <button type="submit" name="delete_event" class="inline-flex items-center px-4 py-2 border border-red-600 text-sm font-medium rounded-md text-red-600 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
@@ -180,6 +262,7 @@ $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <i class="fas fa-trash-alt ml-2"></i>
                                 </button>
                             </form>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
@@ -198,6 +281,14 @@ $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <?php endif; ?>
         </div>
 
+        <!-- Event Details Modal -->
+        <div id="eventModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <div id="eventDetails"></div>
+            </div>
+        </div>
+
         <!-- Footer -->
         <footer class="bg-gradient-to-r from-green-700 via-emerald-700 to-teal-700 text-white shadow mt-12">
             <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
@@ -209,7 +300,80 @@ $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </div>
 
     <script>
-        // Simple search and filter functionality
+        // Get the modal
+        const modal = document.getElementById("eventModal");
+        const closeBtn = document.getElementsByClassName("close")[0];
+
+        // When the user clicks on <span> (x), close the modal
+        closeBtn.onclick = function() {
+            modal.style.display = "none";
+        }
+
+        // When the user clicks anywhere outside of the modal, close it
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+
+        function showEventDetails(event) {
+            const modal = document.getElementById("eventModal");
+            const detailsDiv = document.getElementById("eventDetails");
+            
+            // Format the event details
+            const details = `
+                <h2 class="text-2xl font-bold text-gray-900 mb-4">${event.title}</h2>
+                <div class="space-y-4">
+                    <div class="flex items-center">
+                        <i class="far fa-calendar-alt text-emerald-500 mr-2"></i>
+                        <span>Date: ${new Date(event.date_time).toLocaleDateString()}</span>
+                    </div>
+                    <div class="flex items-center">
+                        <i class="far fa-clock text-emerald-500 mr-2"></i>
+                        <span>Time: ${new Date(event.date_time).toLocaleTimeString()}</span>
+                    </div>
+                    <div class="flex items-center">
+                        <i class="fas fa-map-marker-alt text-emerald-500 mr-2"></i>
+                        <span>Location: ${event.location}</span>
+                    </div>
+                    <div class="flex items-center">
+                        <i class="fas fa-users text-emerald-500 mr-2"></i>
+                        <span>Volunteers: ${event.registered_count}/${event.max_volunteers}</span>
+                    </div>
+                    <div class="flex items-center">
+                        <i class="fas fa-user text-emerald-500 mr-2"></i>
+                        <span>Created by: ${event.creator_name}</span>
+                    </div>
+                    <div class="mt-4">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-2">Description</h3>
+                        <p class="text-gray-600">${event.description || 'No description provided.'}</p>
+                    </div>
+                    <div class="mt-6 flex justify-between">
+                        ${event.status === 'Open' && !event.is_registered ? `
+                            <form method="POST" class="inline">
+                                <input type="hidden" name="event_id" value="${event.id}">
+                                <button type="submit" name="register_event" 
+                                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-gradient-to-r from-green-700 via-emerald-700 to-teal-700 hover:from-green-800 hover:via-emerald-800 hover:to-teal-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
+                                    Participate
+                                    <i class="fas fa-user-plus ml-2"></i>
+                                </button>
+                            </form>
+                        ` : ''}
+                        ${event.is_registered ? `
+                            <span class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-green-700 bg-green-100">
+                                Already Registered
+                                <i class="fas fa-check ml-2"></i>
+                            </span>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+            
+            detailsDiv.innerHTML = details;
+            modal.style.display = "block";
+        }
+
+        // Search and filter functionality
         document.getElementById('search').addEventListener('input', filterEvents);
         document.getElementById('status').addEventListener('change', filterEvents);
 
