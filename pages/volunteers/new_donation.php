@@ -11,26 +11,42 @@ if (!isLoggedIn()) {
 $database = new Database();
 $conn = $database->getConnection();
 
-$error = '';
-$success = '';
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $amount = filter_input(INPUT_POST, 'amount', FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
-    $type = sanitize_input($_POST['type']);
-    $description = sanitize_input($_POST['description']);
-    
-    if (empty($amount) || empty($type)) {
-        $error = "Amount and type are required";
-    } elseif ($amount <= 0) {
-        $error = "Amount must be greater than 0";
-    } else {
-        $stmt = $conn->prepare("INSERT INTO donations (user_id, amount, type, description, status) VALUES (?, ?, ?, ?, 'Pending')");
-        if ($stmt->execute([$_SESSION['user_id'], $amount, $type, $description])) {
-            header('Location: donations.php');
+    try {
+        // Validate and sanitize input
+        $amount = filter_input(INPUT_POST, 'amount', FILTER_VALIDATE_FLOAT);
+        $payment_method = filter_input(INPUT_POST, 'payment_method', FILTER_SANITIZE_STRING);
+        $user_id = $_SESSION['user_id'];
+        $status = 'Pending'; // Default status for new donations
+
+        // Validate required fields
+        if (!$amount || $amount <= 0) {
+            throw new Exception("Please enter a valid amount greater than 0.");
+        }
+        if (!$payment_method) {
+            throw new Exception("Please select a payment method.");
+        }
+
+        // Prepare and execute the insert query
+        $stmt = $conn->prepare("
+            INSERT INTO donations (
+                user_id, 
+                amount, 
+                payment_method, 
+                status, 
+                created_at, 
+                updated_at
+            ) VALUES (?, ?, ?, ?, NOW(), NOW())
+        ");
+        
+        if ($stmt->execute([$user_id, $amount, $payment_method, $status])) {
+            header('Location: /soemone/pages/volunteers/donations.php?success=1');
             exit();
         } else {
-            $error = "Failed to submit donation. Please try again.";
+            throw new Exception("Failed to process donation. Please try again.");
         }
+    } catch (Exception $e) {
+        $error = $e->getMessage();
     }
 }
 ?>
@@ -50,7 +66,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="flex justify-between h-16">
                 <div class="flex">
                     <div class="flex-shrink-0 flex items-center">
-                        <a href="/soemone" class="text-xl font-bold text-teal-600">VolunteerHub</a>
+                        <a href="/soemone" class="text-xl font-bold text-teal-600">
+                            <i class="fas fa-hands-helping mr-2"></i>VolunteerHub
+                        </a>
                     </div>
                     <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
                         <a href="/soemone/pages/volunteers/dashboard.php" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
@@ -84,57 +102,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="px-4 py-6 sm:px-0">
             <div class="bg-white shadow rounded-lg p-6">
                 <div class="mb-6">
-                    <h2 class="text-2xl font-bold text-gray-900">New Donation</h2>
-                    <p class="mt-1 text-sm text-gray-500">Submit a new donation to support our cause.</p>
+                    <h2 class="text-2xl font-bold text-gray-900">Make a New Donation</h2>
+                    <p class="mt-1 text-sm text-gray-600">Please fill in the details below to make a new donation.</p>
                 </div>
 
-                <?php if ($error): ?>
-                    <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md mb-6" role="alert">
-                        <div class="flex items-center">
-                            <i class="fas fa-exclamation-circle mr-2"></i>
-                            <span><?php echo $error; ?></span>
+                <?php if (isset($error)): ?>
+                    <div class="bg-red-50 border-l-4 border-red-400 p-4 mb-6">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-exclamation-circle text-red-400"></i>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm text-red-700"><?php echo htmlspecialchars($error); ?></p>
+                            </div>
                         </div>
                     </div>
                 <?php endif; ?>
 
-                <form method="POST" action="new_donation.php" class="space-y-6">
+                <form method="POST" class="space-y-6">
                     <div>
-                        <label for="amount" class="block text-sm font-medium text-gray-700">Amount</label>
-                        <div class="mt-1 relative rounded-md shadow-sm">
-                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <span class="text-gray-500 sm:text-sm">$</span>
-                            </div>
-                            <input type="number" step="0.01" name="amount" id="amount" required
-                                class="pl-7 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm"
+                        <label for="amount" class="block text-sm font-medium text-gray-700">Amount ($) *</label>
+                        <div class="mt-1">
+                            <input type="number" step="0.01" min="0" name="amount" id="amount" required
+                                class="shadow-sm focus:ring-teal-500 focus:border-teal-500 block w-full sm:text-sm border-gray-300 rounded-md"
                                 placeholder="0.00">
                         </div>
                     </div>
 
                     <div>
-                        <label for="type" class="block text-sm font-medium text-gray-700">Type</label>
-                        <select name="type" id="type" required
-                            class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm rounded-md">
-                            <option value="">Select a type</option>
-                            <option value="Monetary">Monetary</option>
-                            <option value="In-Kind">In-Kind</option>
-                            <option value="Equipment">Equipment</option>
-                            <option value="Other">Other</option>
-                        </select>
+                        <label for="payment_method" class="block text-sm font-medium text-gray-700">Payment Method *</label>
+                        <div class="mt-1">
+                            <select name="payment_method" id="payment_method" required
+                                class="shadow-sm focus:ring-teal-500 focus:border-teal-500 block w-full sm:text-sm border-gray-300 rounded-md">
+                                <option value="">Select a payment method</option>
+                                <option value="Credit Card">Credit Card</option>
+                                <option value="Debit Card">Debit Card</option>
+                                <option value="PayPal">PayPal</option>
+                                <option value="Bank Transfer">Bank Transfer</option>
+                                <option value="Cash">Cash</option>
+                            </select>
+                        </div>
                     </div>
 
-                    <div>
-                        <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
-                        <textarea name="description" id="description" rows="3"
-                            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm"
-                            placeholder="Add any additional details about your donation"></textarea>
-                    </div>
-
-                    <div class="flex justify-end space-x-3">
-                        <a href="donations.php" class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">
-                            <i class="fas fa-times mr-2"></i> Cancel
+                    <div class="flex items-center justify-end space-x-4">
+                        <a href="/soemone/pages/volunteers/donations.php"
+                            class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                            Cancel
                         </a>
-                        <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">
-                            <i class="fas fa-check mr-2"></i> Submit Donation
+                        <button type="submit"
+                            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-teal-600 hover:bg-teal-700">
+                            <i class="fas fa-donate mr-2"></i> Make Donation
                         </button>
                     </div>
                 </form>

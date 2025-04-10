@@ -1,25 +1,30 @@
 <?php
-// events.php
-
-// Include necessary files or configurations
-require_once '../../config/database.php';
 require_once '../../includes/auth.php';
-
-// Ensure user is logged in
-if (!isLoggedIn()) {
-    header('Location: /soemone/login.php');
-    exit();
-}
+require_once '../../config/database.php';
+requireLogin();
 
 $database = new Database();
 $conn = $database->getConnection();
 
-// Fetch events
-$stmt = $conn->prepare("SELECT * FROM events ORDER BY date ASC");
+// Handle event deletion
+if (isset($_POST['delete_event']) && isset($_POST['event_id'])) {
+    try {
+        $stmt = $conn->prepare("DELETE FROM events WHERE id = :id");
+        $stmt->execute([':id' => $_POST['event_id']]);
+        $success_message = 'Event deleted successfully!';
+    } catch (PDOException $e) {
+        $error_message = 'Error deleting event: ' . $e->getMessage();
+    }
+}
+
+// Get all events
+$stmt = $conn->prepare("
+    SELECT * FROM events 
+    ORDER BY date_time ASC
+");
 $stmt->execute();
 $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,99 +34,203 @@ $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
-<body class="bg-gray-100">
-    <!-- Navigation -->
-    <nav class="bg-white shadow-lg">
-        <div class="max-w-7xl mx-auto px-4">
-            <div class="flex justify-between h-16">
-                <div class="flex">
-                    <div class="flex-shrink-0 flex items-center">
-                        <a href="/soemone" class="text-xl font-bold text-teal-600">VolunteerHub</a>
-                    </div>
-                    <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
-                        <a href="/soemone/pages/volunteers/dashboard.php" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-                            <i class="fas fa-home mr-2"></i> Dashboard
-                        </a>
-                        <a href="/soemone/pages/volunteers/donations.php" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-                            <i class="fas fa-donate mr-2"></i> Donations
-                        </a>
-                        <a href="/soemone/pages/volunteers/events.php" class="border-teal-500 text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-                            <i class="fas fa-calendar-alt mr-2"></i> Events
-                        </a>
-                        <a href="/soemone/pages/volunteers/hours.php" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-                            <i class="fas fa-clock mr-2"></i> Hours
+<body class="bg-gray-50">
+    <div class="min-h-screen">
+        <!-- Navigation -->
+        <nav class="bg-white shadow-lg">
+            <div class="max-w-7xl mx-auto px-4">
+                <div class="flex justify-between h-16">
+                    <div class="flex items-center">
+                        <a href="/soemone" class="font-bold text-xl text-gray-800">
+                            <i class="fas fa-hands-helping mr-2"></i>VolunteerHub
                         </a>
                     </div>
-                </div>
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <span class="text-gray-700 mr-4"><?php echo htmlspecialchars($_SESSION['user_name']); ?></span>
-                        <a href="/soemone/logout.php" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-teal-600 hover:bg-teal-700">
-                            <i class="fas fa-sign-out-alt mr-2"></i> Logout
+                    <div class="flex items-center space-x-4">
+                        <a href="/soemone/pages/volunteers/dashboard.php" class="text-gray-600 hover:text-gray-900">
+                            <i class="fas fa-tachometer-alt mr-1"></i>Dashboard
+                        </a>
+                        <a href="/soemone/pages/volunteers/events.php" class="text-gray-600 hover:text-gray-900">
+                            <i class="fas fa-calendar-alt mr-1"></i>Events
+                        </a>
+                        <a href="/soemone/pages/volunteers/donations.php" class="text-gray-600 hover:text-gray-900">
+                            <i class="fas fa-hand-holding-usd mr-1"></i>Donations
+                        </a>
+                        <a href="/soemone/pages/volunteers/volunteers.php" class="text-gray-600 hover:text-gray-900">
+                            <i class="fas fa-users mr-1"></i>Volunteers
+                        </a>
+                        <a href="/soemone/pages/volunteers/profile.php" class="text-gray-600 hover:text-gray-900">
+                            <i class="fas fa-user mr-1"></i>Profile
+                        </a>
+                        <a href="/soemone/logout.php" class="text-gray-600 hover:text-gray-900">
+                            <i class="fas fa-sign-out-alt mr-1"></i>Logout
                         </a>
                     </div>
                 </div>
             </div>
-        </div>
-    </nav>
+        </nav>
 
-    <!-- Main Content -->
-    <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div class="px-4 py-6 sm:px-0">
-            <div class="bg-white shadow rounded-lg p-6">
-                <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-2xl font-bold text-gray-900">Upcoming Events</h2>
-                    <a href="/soemone/pages/volunteers/register_event.php" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-teal-600 hover:bg-teal-700">
-                        <i class="fas fa-plus mr-2"></i> Register for Event
-                    </a>
+        <!-- Hero Section -->
+        <div class="bg-gradient-to-r from-green-700 via-emerald-700 to-teal-700 text-white">
+            <div class="max-w-7xl mx-auto py-16 px-4 sm:py-24 sm:px-6 lg:px-8">
+                <div class="text-center">
+                    <h1 class="text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
+                        Volunteer Events
+                    </h1>
+                    <p class="mt-6 max-w-2xl mx-auto text-xl text-green-100">
+                        Join our community events and make a difference in people's lives.
+                    </p>
                 </div>
+            </div>
+        </div>
 
-                <?php if (empty($events)): ?>
-                    <div class="text-center py-12">
-                        <i class="fas fa-calendar-times text-4xl text-gray-400 mb-4"></i>
-                        <h3 class="text-lg font-medium text-gray-900">No upcoming events</h3>
-                        <p class="mt-1 text-sm text-gray-500">Check back later for new events.</p>
-                    </div>
-                <?php else: ?>
-                    <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                        <?php foreach ($events as $event): ?>
-                            <div class="bg-white border rounded-lg shadow-sm overflow-hidden">
-                                <div class="p-6">
-                                    <div class="flex items-center justify-between">
-                                        <h3 class="text-lg font-medium text-gray-900"><?php echo htmlspecialchars($event['title']); ?></h3>
-                                        <span class="px-2 py-1 text-xs font-semibold rounded-full <?php echo $event['status'] === 'Open' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'; ?>">
-                                            <?php echo htmlspecialchars($event['status']); ?>
-                                        </span>
-                                    </div>
-                                    <div class="mt-4">
-                                        <div class="flex items-center text-sm text-gray-500">
-                                            <i class="fas fa-calendar-day mr-2"></i>
-                                            <?php echo date('F j, Y', strtotime($event['date'])); ?>
-                                        </div>
-                                        <div class="flex items-center text-sm text-gray-500 mt-2">
-                                            <i class="fas fa-clock mr-2"></i>
-                                            <?php echo date('g:i A', strtotime($event['start_time'])); ?> - <?php echo date('g:i A', strtotime($event['end_time'])); ?>
-                                        </div>
-                                        <div class="flex items-center text-sm text-gray-500 mt-2">
-                                            <i class="fas fa-map-marker-alt mr-2"></i>
-                                            <?php echo htmlspecialchars($event['location']); ?>
-                                        </div>
-                                    </div>
-                                    <div class="mt-4">
-                                        <p class="text-sm text-gray-500"><?php echo htmlspecialchars($event['description']); ?></p>
-                                    </div>
-                                    <div class="mt-6">
-                                        <a href="/soemone/pages/volunteers/register_event.php?id=<?php echo $event['id']; ?>" class="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-teal-600 hover:bg-teal-700">
-                                            <i class="fas fa-user-plus mr-2"></i> Register
-                                        </a>
-                                    </div>
-                                </div>
+        <!-- Main Content -->
+        <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+            <?php if (isset($success_message)): ?>
+                <div class="mb-4 p-4 bg-green-100 text-green-700 rounded-md">
+                    <?php echo $success_message; ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if (isset($error_message)): ?>
+                <div class="mb-4 p-4 bg-red-100 text-red-700 rounded-md">
+                    <?php echo $error_message; ?>
+                </div>
+            <?php endif; ?>
+
+            <!-- Search and Filter Section -->
+            <div class="bg-white shadow-lg rounded-lg p-6 mb-6">
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <div class="flex-1">
+                        <label for="search" class="block text-sm font-medium text-gray-700">Search Events</label>
+                        <div class="mt-1 relative rounded-md shadow-sm">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <i class="fas fa-search text-gray-400"></i>
                             </div>
-                        <?php endforeach; ?>
+                            <input type="text" name="search" id="search" class="focus:ring-emerald-500 focus:border-emerald-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md" placeholder="Search by title, location...">
+                        </div>
                     </div>
-                <?php endif; ?>
+                    <div class="flex-1">
+                        <label for="status" class="block text-sm font-medium text-gray-700">Filter by Status</label>
+                        <select id="status" name="status" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm rounded-md">
+                            <option value="all">All Events</option>
+                            <option value="open">Open Events</option>
+                            <option value="closed">Closed Events</option>
+                        </select>
+                    </div>
+                    <div class="flex items-end">
+                        <a href="/soemone/pages/volunteers/add_event.php" 
+                            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-gradient-to-r from-green-700 via-emerald-700 to-teal-700 hover:from-green-800 hover:via-emerald-800 hover:to-teal-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
+                            <i class="fas fa-plus mr-2"></i>Add Event
+                        </a>
+                    </div>
+                </div>
             </div>
+
+            <!-- Events Grid -->
+            <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                <?php foreach ($events as $event): ?>
+                <div class="bg-white overflow-hidden shadow-lg rounded-lg transform transition duration-300 hover:scale-105">
+                    <!-- Event Image -->
+                    <div class="h-48 bg-gradient-to-r from-green-600 via-emerald-600 to-teal-600 flex items-center justify-center">
+                        <i class="fas fa-calendar-alt text-white text-6xl"></i>
+                    </div>
+                    
+                    <div class="px-4 py-5 sm:p-6">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-lg font-medium text-gray-900"><?php echo htmlspecialchars($event['title']); ?></h3>
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                <?php echo $event['status'] === 'Open' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'; ?>">
+                                <?php echo ucfirst($event['status']); ?>
+                            </span>
+                        </div>
+                        
+                        <div class="mt-4 space-y-3">
+                            <div class="flex items-center text-sm text-gray-500">
+                                <i class="far fa-calendar-alt mr-2 text-emerald-500"></i>
+                                <?php echo date('M d, Y', strtotime($event['date_time'])); ?>
+                            </div>
+                            <div class="flex items-center text-sm text-gray-500">
+                                <i class="far fa-clock mr-2 text-emerald-500"></i>
+                                <?php echo date('h:i A', strtotime($event['date_time'])); ?>
+                            </div>
+                            <div class="flex items-center text-sm text-gray-500">
+                                <i class="fas fa-map-marker-alt mr-2 text-emerald-500"></i>
+                                <?php echo htmlspecialchars($event['location']); ?>
+                            </div>
+                            <div class="flex items-center text-sm text-gray-500">
+                                <i class="fas fa-users mr-2 text-emerald-500"></i>
+                                Max Volunteers: <?php echo htmlspecialchars($event['max_volunteers']); ?>
+                            </div>
+                            <?php if (!empty($event['description'])): ?>
+                            <div class="mt-2 text-sm text-gray-600 line-clamp-2">
+                                <?php echo htmlspecialchars($event['description']); ?>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="mt-6 flex justify-between items-center">
+                            <a href="#" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-gradient-to-r from-green-700 via-emerald-700 to-teal-700 hover:from-green-800 hover:via-emerald-800 hover:to-teal-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
+                                View Details
+                                <i class="fas fa-arrow-right ml-2"></i>
+                            </a>
+                            <form method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this event?');">
+                                <input type="hidden" name="event_id" value="<?php echo $event['id']; ?>">
+                                <button type="submit" name="delete_event" class="inline-flex items-center px-4 py-2 border border-red-600 text-sm font-medium rounded-md text-red-600 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                                    Delete
+                                    <i class="fas fa-trash-alt ml-2"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+
+            <!-- No Events Message -->
+            <?php if (empty($events)): ?>
+            <div class="text-center py-12 bg-white rounded-lg shadow-lg">
+                <i class="fas fa-calendar-times text-6xl text-gray-400 mb-4"></i>
+                <h3 class="text-lg font-medium text-gray-900">No Events Available</h3>
+                <p class="mt-2 text-sm text-gray-500">
+                    There are currently no events scheduled. Please check back later.
+                </p>
+            </div>
+            <?php endif; ?>
         </div>
+
+        <!-- Footer -->
+        <footer class="bg-gradient-to-r from-green-700 via-emerald-700 to-teal-700 text-white shadow mt-12">
+            <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+                <p class="text-center text-green-100 text-sm">
+                    &copy; <?php echo date('Y'); ?> VolunteerHub. All rights reserved.
+                </p>
+            </div>
+        </footer>
     </div>
+
+    <script>
+        // Simple search and filter functionality
+        document.getElementById('search').addEventListener('input', filterEvents);
+        document.getElementById('status').addEventListener('change', filterEvents);
+
+        function filterEvents() {
+            const searchTerm = document.getElementById('search').value.toLowerCase();
+            const statusFilter = document.getElementById('status').value;
+            const eventCards = document.querySelectorAll('.grid > div');
+
+            eventCards.forEach(card => {
+                const title = card.querySelector('h3').textContent.toLowerCase();
+                const location = card.querySelector('.fa-map-marker-alt').nextSibling.textContent.toLowerCase();
+                const status = card.querySelector('span').textContent.toLowerCase();
+                
+                const matchesSearch = title.includes(searchTerm) || location.includes(searchTerm);
+                const matchesStatus = statusFilter === 'all' || 
+                                    (statusFilter === 'open' && status === 'open') ||
+                                    (statusFilter === 'closed' && status === 'closed');
+
+                card.style.display = matchesSearch && matchesStatus ? 'block' : 'none';
+            });
+        }
+    </script>
 </body>
-</html>
+</html> 

@@ -50,11 +50,24 @@ $hours = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <a href="/" class="font-bold text-xl">VolunteerHub</a>
                     </div>
                     <div class="flex items-center space-x-4">
-                        <a href="dashboard.php" class="hover:text-gray-200">Dashboard</a>
-                        <a href="events.php" class="hover:text-gray-200">Events</a>
-                        <a href="hours.php" class="hover:text-gray-200">Hours</a>
-                        <a href="profile.php" class="hover:text-gray-200">Profile</a>
-                        <a href="/logout.php" class="hover:text-gray-200">Logout</a>
+                        <a href="/soemone/pages/volunteers/dashboard.php" class="text-gray-600 hover:text-gray-900">
+                            <i class="fas fa-tachometer-alt mr-1"></i>Dashboard
+                        </a>
+                        <a href="/soemone/pages/volunteers/events.php" class="text-gray-600 hover:text-gray-900">
+                            <i class="fas fa-calendar-alt mr-1"></i>Events
+                        </a>
+                        <a href="/soemone/pages/volunteers/donations.php" class="text-gray-600 hover:text-gray-900">
+                            <i class="fas fa-hand-holding-usd mr-1"></i>Donations
+                        </a>
+                        <a href="/soemone/pages/volunteers/volunteers.php" class="text-gray-600 hover:text-gray-900">
+                            <i class="fas fa-users mr-1"></i>Volunteers
+                        </a>
+                        <a href="/soemone/pages/volunteers/profile.php" class="text-gray-600 hover:text-gray-900">
+                            <i class="fas fa-user mr-1"></i>Profile
+                        </a>
+                        <a href="/soemone/logout.php" class="text-gray-600 hover:text-gray-900">
+                            <i class="fas fa-sign-out-alt mr-1"></i>Logout
+                        </a>
                     </div>
                 </div>
             </div>

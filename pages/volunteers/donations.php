@@ -11,8 +11,19 @@ if (!isLoggedIn()) {
 $database = new Database();
 $conn = $database->getConnection();
 
+// Show success message if redirected from new donation
+if (isset($_GET['success']) && $_GET['success'] == 1) {
+    $success_message = "Donation added successfully!";
+}
+
 // Fetch donations for the current user
-$stmt = $conn->prepare("SELECT * FROM donations WHERE user_id = ? ORDER BY donation_date DESC");
+$stmt = $conn->prepare("
+    SELECT d.*, u.full_name 
+    FROM donations d
+    JOIN users u ON d.user_id = u.id
+    WHERE d.user_id = ? 
+    ORDER BY d.created_at DESC
+");
 $stmt->execute([$_SESSION['user_id']]);
 $donations = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
@@ -32,7 +43,9 @@ $donations = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <div class="flex justify-between h-16">
                 <div class="flex">
                     <div class="flex-shrink-0 flex items-center">
-                        <a href="/soemone" class="text-xl font-bold text-teal-600">VolunteerHub</a>
+                        <a href="/soemone" class="text-xl font-bold text-teal-600">
+                            <i class="fas fa-hands-helping mr-2"></i>VolunteerHub
+                        </a>
                     </div>
                     <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
                         <a href="/soemone/pages/volunteers/dashboard.php" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
@@ -72,6 +85,19 @@ $donations = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     </a>
                 </div>
 
+                <?php if (isset($success_message)): ?>
+                    <div class="bg-green-50 border-l-4 border-green-400 p-4 mb-6">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-check-circle text-green-400"></i>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm text-green-700"><?php echo htmlspecialchars($success_message); ?></p>
+                            </div>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
                 <?php if (empty($donations)): ?>
                     <div class="text-center py-12">
                         <i class="fas fa-donate text-4xl text-gray-400 mb-4"></i>
@@ -90,32 +116,40 @@ $donations = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <tr>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Method</th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 <?php foreach ($donations as $donation): ?>
                                     <tr>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            <?php echo date('M d, Y', strtotime($donation['donation_date'])); ?>
+                                            <?php echo date('M d, Y', strtotime($donation['created_at'])); ?>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                             $<?php echo number_format($donation['amount'], 2); ?>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            <?php echo htmlspecialchars($donation['type']); ?>
+                                            <?php echo htmlspecialchars($donation['payment_method']); ?>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap">
-                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                            <?php
+                                            $status_class = '';
+                                            switch ($donation['status']) {
+                                                case 'Completed':
+                                                    $status_class = 'bg-green-100 text-green-800';
+                                                    break;
+                                                case 'Pending':
+                                                    $status_class = 'bg-yellow-100 text-yellow-800';
+                                                    break;
+                                                case 'Failed':
+                                                    $status_class = 'bg-red-100 text-red-800';
+                                                    break;
+                                            }
+                                            ?>
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?php echo $status_class; ?>">
                                                 <?php echo htmlspecialchars($donation['status']); ?>
                                             </span>
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            <a href="/soemone/pages/volunteers/view_donation.php?id=<?php echo $donation['id']; ?>" class="text-teal-600 hover:text-teal-900">
-                                                <i class="fas fa-eye mr-1"></i> View
-                                            </a>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
