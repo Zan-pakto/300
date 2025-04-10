@@ -80,9 +80,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <a href="/soemone/pages/volunteers/events.php" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                             <i class="fas fa-calendar-alt mr-2"></i> Events
                         </a>
-                        <a href="/soemone/pages/volunteers/hours.php" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-                            <i class="fas fa-clock mr-2"></i> Hours
-                        </a>
                     </div>
                 </div>
                 <div class="flex items-center">
